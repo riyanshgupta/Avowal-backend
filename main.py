@@ -110,7 +110,7 @@ app.mount("/images", StaticFiles(directory=images_path), name="images")
 
 comment_event_queue = asyncio.Queue()
 
-analyzer = LLM_analyzer(SYSTEM_PROMPT_FOR_APPROVAL, API_KEY_GEMINI, API_KEY_OPEN_ROUTER)
+
 
 # ------------------------------------------------------------------------------------------------------------------------
 @app.get("/")
@@ -468,6 +468,7 @@ async def add_confession(
     
     try:
         # Check with LLM analyzer
+        analyzer = LLM_analyzer(SYSTEM_PROMPT_FOR_APPROVAL, API_KEY_GEMINI, API_KEY_OPEN_ROUTER)
         print(analyzer.gemini_api_key, analyzer.open_router_api_key)
         llm_decision = await analyzer.analyze_confession(confession.content)
     except Exception as e:
