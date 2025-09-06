@@ -24,8 +24,24 @@ class LLM_analyzer:
             "venice/uncensored"
         ]
         self.max_retries = 5
-        self.gemini_api_key = gemini_api_key
-        self.open_router_api_key = open_router_api_key
+        
+        # Validate API keys
+        if not gemini_api_key or gemini_api_key == "None":
+            logging.warning("Gemini API key is not set or is None")
+            self.gemini_api_key = None
+        else:
+            self.gemini_api_key = gemini_api_key
+            
+        if not open_router_api_key or open_router_api_key == "None":
+            logging.warning("OpenRouter API key is not set or is None")
+            self.open_router_api_key = None
+        else:
+            self.open_router_api_key = open_router_api_key
+            
+        # Check if at least one API key is available
+        if not self.gemini_api_key and not self.open_router_api_key:
+            logging.error("No API keys available for LLM analysis")
+            raise ValueError("At least one API key (Gemini or OpenRouter) must be provided")
 
     def _extract_text(self, json_str: Dict[str, Any]) -> str | None:
         try:
@@ -43,6 +59,9 @@ class LLM_analyzer:
         user_prompt: str, model: str):
         try:
             if model.startswith("gemini"):
+                if not self.gemini_api_key:
+                    raise ValueError(f"Gemini API key not available for model {model}")
+                    
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                 headers = {
                     "Content-Type": "application/json",
@@ -72,6 +91,9 @@ class LLM_analyzer:
                 response = await self._api_call(url, data, headers)
                 return response
             else:
+                if not self.open_router_api_key:
+                    raise ValueError(f"OpenRouter API key not available for model {model}")
+                    
                 # Using open-router for non-Gemini models
                 url = "https://openrouter.ai/api/v1/chat/completions"
                 headers = {
@@ -122,11 +144,24 @@ class LLM_analyzer:
     async def analyze_confession(self, user_prompt: str):
         """ Analyzes a confession using the specified LLM model."""
         i, max_retries = 0, self.max_retries
+        available_models = []
+        
+        # Filter available models based on API keys
+        for model in self.allowed_models:
+            if model.startswith("gemini") and self.gemini_api_key:
+                available_models.append(model)
+            elif not model.startswith("gemini") and self.open_router_api_key:
+                available_models.append(model)
+        
+        if not available_models:
+            raise ValueError("No models available due to missing API keys")
+        
         while max_retries != i:
             try:
+                model = available_models[i % len(available_models)]
                 res = await self._llm_call(
                     user_prompt=user_prompt,
-                    model=self.allowed_models[i % len(self.allowed_models)],
+                    model=model,
                 )
                 return self._extract_text(res)
             except Exception as e:
@@ -134,4 +169,3 @@ class LLM_analyzer:
                 i += 1
                 if max_retries == i:
                     raise e
-    

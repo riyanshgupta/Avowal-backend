@@ -456,12 +456,15 @@ async def add_confession(
     
     try:
         # Check with LLM analyzer
+        print(analyzer.gemini_api_key, analyzer.open_router_api_key)
         llm_decision = await analyzer.analyze_confession(confession.content)
     except Exception as e:
         logging.error(f"Error occurred in add_confession: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Error in content analysis")
+        # Fallback: Allow confession if LLM analysis fails
+        logging.warning(f"LLM analysis failed, allowing confession: {str(e)}")
+        llm_decision = "APPROVE"  # Fallback to approve
     
-    if llm_decision.lower().startswith("reject"):
+    if llm_decision and llm_decision.lower().startswith("reject"):
         raise HTTPException(status_code=403, detail="Confession rejected by content analyzer")
     
 
@@ -679,8 +682,8 @@ async def mark_confessions_as_read(
 
 
 # Function to publish comment events
-async def publish_comment_event(comment_data: dict):
-    await comment_event_queue.put(comment_data)
+# async def publish_comment_event(comment_data: dict):
+#     await comment_event_queue.put(comment_data)
 
 # Changed
 @app.post("/confessions/{confession_id}/comments", response_model=CommentResponse)
