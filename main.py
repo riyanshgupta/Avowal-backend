@@ -373,6 +373,7 @@ async def search_users(
     stmt = select(User).where(
         (User.username.ilike(f"{q}%")) | (User.email.ilike(f"{q}%"))
     )
+    
     results = await session.execute(stmt)
     users = results.scalars().all()
 
@@ -386,11 +387,21 @@ async def search_users(
 @app.get("/user")  # viewed profile function yet to be implemented
 async def get_user(
     username: str,
+    searched: bool = False,
     current_user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     
-    user = await get_user_by_username(username, session)
+    if searched and username!=current_user.get("username"):
+        user = await get_user_by_username(username, session)
+        if user:
+            user.searched_counts += 1
+            session.add(user)
+            await session.commit()
+
+    else:
+        user = await get_user_by_username(username, session)
+
     if not user:
         raise HTTPException(status_code=403, detail=f"Username not found")
     data = jsonable_encoder(user, exclude=["hashedpassword", "id", "unread_confessions"])
@@ -734,6 +745,23 @@ async def set_email(password: str):
     with open(file="emails.json", encoding="utf-8", mode="w") as f:
         f.write(json.dumps({"emails": emails, "names": names}))
     return JSONResponse(status_code=200, content={"message": "Success"})
+
+@app.get("/topsearched_usernames")
+async def get_top_usernames(
+    session: AsyncSession = Depends(get_session),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    # Fetch top 10 usernames based on searched_counts
+    stmt = select(User.username, User.searched_counts, User.profile_pic).order_by(User.searched_counts.desc()).limit(10)
+    result = await session.execute(stmt)
+    result = result.mappings().all()
+    data = [{
+        "username": row["username"],
+        "profile_pic": row["profile_pic"],
+        "searched_counts": row["searched_counts"],
+    } for row in result]
+    
+    return JSONResponse(status_code=200, content={"message": "Success", "data": data})
 
 
 if __name__ == "__main__":

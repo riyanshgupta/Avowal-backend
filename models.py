@@ -60,7 +60,8 @@ class User(SQLModel, table=True):
     username: str = Field(max_length=50, unique=True, nullable=False, index=True)
     email: str = Field(max_length=255, unique=True, nullable=False, index=True)
     name: str = Field(max_length=255, nullable=False)
-    hashedpassword: str = Field(max_length=255, nullable=False)
+    hashedpassword: str = Field(max_length=255, nullable=False),
+    searched_counts: int = Field(default=0, nullable=False)
     profile_pic: str = Field(
         max_length=500, nullable=False, default="images/profile/def.jpg"
     )
