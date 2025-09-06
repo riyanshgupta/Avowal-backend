@@ -59,3 +59,6 @@ class ResetPasswordRequest(BaseModel):
     
 class MarkAsReadRequest(BaseModel):
     confession_ids: List[int]
+
+class GoogleIDToken(BaseModel):
+    id_token: str

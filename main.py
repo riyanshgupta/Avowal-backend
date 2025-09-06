@@ -16,6 +16,7 @@ from models import Confession, User, Comment
 from schema import (
     ConfessionCreate,
     ConfessionResponse,
+    GoogleIDToken,
     UserCreate,
     UserResponse,
     CommentCreate,
@@ -112,8 +113,8 @@ async def root():
 
 # ----------------------------------------------Oauth2.0 and JWT based authentication system---------------------------------
 @app.post("/auth/google")
-async def auth_google(id_token_str: str, session: AsyncSession = Depends(get_session)):
-    google_payload = verify_google_token(id_token_str)
+async def auth_google(google_id_token: GoogleIDToken, session: AsyncSession = Depends(get_session)):
+    google_payload = verify_google_token(google_id_token.id_token)
     if not google_payload:
         raise HTTPException(status_code=401, detail="Invalid Google token")
     
