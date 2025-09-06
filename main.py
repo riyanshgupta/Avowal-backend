@@ -600,13 +600,19 @@ async def get_confessions(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     current_user:User = await get_user_by_email(current_user.get("email"), session)
-    stmt = select(Confession)
+    
+    # Optimized query - select only needed columns
     if q:
-        stmt = stmt.where(Confession.content.ilike(f"%{q}%"))
-
-    stmt = stmt.order_by(Confession.created_at.desc()).offset(skip).limit(limit)
+        stmt = select(Confession.id, Confession.content, Confession.created_at).where(
+            Confession.content.ilike(f"%{q}%")
+        ).order_by(Confession.created_at.desc()).offset(skip).limit(limit)
+    else:
+        stmt = select(Confession.id, Confession.content, Confession.created_at).order_by(
+            Confession.created_at.desc()
+        ).offset(skip).limit(limit)
+    
     result = await session.execute(stmt)
-    confessions: List[Confession] = result.scalars().all()
+    confessions = result.mappings().all()
 
     unread_confessions_set = set(current_user.unread_confessions)
 
@@ -708,19 +714,31 @@ async def add_comment(
 async def get_comments(
     confession_id: int, session: AsyncSession = Depends(get_session)
 ):
-    stmt = select(Comment.content, Comment.user_id, Comment.id, Comment.created_at).where(Comment.confession_id == confession_id)
+    # Optimized query using composite index
+    stmt = select(
+        Comment.content, 
+        Comment.user_id, 
+        Comment.id, 
+        Comment.created_at
+    ).where(
+        Comment.confession_id == confession_id
+    ).order_by(Comment.created_at.desc())  # Use index for ordering
+    
     result = await session.execute(stmt)
     comments = result.mappings().all()
     comments = jsonable_encoder(comments)
    
-    stmt = select(User.id, User.username, User.profile_pic).where(User.id.in_([comment["user_id"] for comment in comments]))
-    result = await session.execute(stmt)
-    users = result.mappings().all()  # value is a dict
-    user_map = {user.id: user for user in users}
+    # Batch user lookup for better performance
+    if comments:
+        user_ids = [comment["user_id"] for comment in comments]
+        stmt = select(User.id, User.username, User.profile_pic).where(User.id.in_(user_ids))
+        result = await session.execute(stmt)
+        users = result.mappings().all()
+        user_map = {user.id: user for user in users}
 
-    for comment in comments:
-        if comment.get("user_id") in user_map:
-            comment["user"] = user_map[comment.get("user_id")]
+        for comment in comments:
+            if comment.get("user_id") in user_map:
+                comment["user"] = user_map[comment.get("user_id")]
     
     return JSONResponse(status_code=200, content={"message": jsonable_encoder(comments)})
 

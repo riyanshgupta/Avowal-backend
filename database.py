@@ -15,13 +15,15 @@ engine = create_async_engine(
     DATABASE_URL, 
     echo=False,
     poolclass=NullPool,  
-    # pool_size=10,  # Adjust based on load
-    # max_overflow=20,
-    # pool_timeout=30,
-    # pool_recycle=3600,
-    # pool_pre_ping=True,  # Checks connection health
-    connect_args={"ssl": "require"}
-    # connect_args={"server_settings": {"jit": "off"}, 'statement_cache_size': 0, 'prepared_statement_name_func': lambda: str(uuid.uuid4())}
+    connect_args={
+        "ssl": "require",
+        "server_settings": {
+            "jit": "off",  # Disable JIT compilation for faster queries
+            "work_mem": "64MB",  # Increase working memory
+        },
+        "statement_cache_size": 0,  # Disable prepared statement caching
+        "prepared_statement_name_func": lambda: f"stmt_{uuid.uuid4().hex}",  # Unique names
+    }
 )
 # Async session maker
 async_session = async_sessionmaker(

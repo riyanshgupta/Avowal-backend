@@ -14,6 +14,7 @@ from config import GOOGLE_CLIENT_ID, ACCESS_TOKEN_EXPIRE_MINUTE, iiitbh_email_do
 from helpers import create_access_token, create_user, get_user_by_email, pwd_context
 from schema import UserCreate
 import secrets
+from datetime import timedelta
 
 def verify_google_token(token: str) -> dict:
     try:
@@ -25,7 +26,6 @@ def verify_google_token(token: str) -> dict:
 
 async def create_jwt_for_google_user(google_payload: dict, session: AsyncSession) -> str:
     try:
-        hashed_password = pwd_context.hash(secrets.token_urlsafe(16))  # Generate a secure random password
         user_data = {
             "email": google_payload.get("email"),
         }
@@ -37,6 +37,7 @@ async def create_jwt_for_google_user(google_payload: dict, session: AsyncSession
             if not str(user_data["email"]).endswith(iiitbh_email_domain):
                 raise HTTPException(status_code=403, detail=f"Email domain must be {iiitbh_email_domain}")
 
+            hashed_password = pwd_context.hash(secrets.token_urlsafe(16))  # Generate a secure random password
             json_response: JSONResponse = await create_user(
                 user=UserCreate(
                     email = user_data["email"],
@@ -45,10 +46,12 @@ async def create_jwt_for_google_user(google_payload: dict, session: AsyncSession
             ), session=session, name=google_payload.get("name"), profile_pic=google_payload.get("picture"), from_google=True)
 
             user_id = json.loads(json_response.body.decode('utf-8')).get('user_id')
+            user_data["id"] = user_id
+        else:
+            user_data["id"] = user.id
 
-        user_data["id"]=user_id
-
-        access_token = create_access_token(data=user_data, expire_delta=ACCESS_TOKEN_EXPIRE_MINUTE)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTE)
+        access_token = create_access_token(data=user_data, expire_delta=access_token_expires)
         return {"access_token": access_token, "token_type": "bearer"}
     
     # This should not catch HTTPException, but any other exception
