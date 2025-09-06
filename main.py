@@ -42,7 +42,19 @@ import cloudinary.uploader
 from data import emails_list, name_list
 from service import create_jwt_for_google_user, verify_google_token
 from utils import LLM_analyzer
-from config import *
+from config import (
+    MAIL,
+    API_KEY_OPEN_ROUTER,
+    MAIL_PASSWORD,
+    API_KEY_CLOUD,
+    API_SECRET,
+    CLOUD_NAME,
+    SECRET_KEY,
+    SYSTEM_PROMPT_FOR_APPROVAL,
+    API_KEY_GEMINI,
+    SALT,
+    ACCESS_TOKEN_EXPIRE_MINUTE,
+)
 from helpers import (
     delete_confession_and_related,
     get_user_by_username,

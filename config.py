@@ -17,6 +17,5 @@ API_KEY_GEMINI=os.getenv(key="API_KEY_GEMINI")
 API_KEY_OPEN_ROUTER=os.getenv(key="API_KEY_OPEN_ROUTER")
 SYSTEM_PROMPT_FOR_APPROVAL = os.getenv(key="SYSTEM_PROMPT_FOR_APPROVAL")
 GOOGLE_CLIENT_ID=os.getenv(key="GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET=os.getenv(key="GOOGLE_CLIENT_SECRET")
 
 iiitbh_email_domain = "iiitbh.ac.in"
