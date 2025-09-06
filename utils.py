@@ -7,10 +7,10 @@ class LLM_analyzer:
     def __init__(self, system_prompt: str, gemini_api_key: str, open_router_api_key: str):
         self.system_prompt = system_prompt
         self.allowed_models = [
-            "gemini-2.0-flash-lite",
+            "gemini-2.5-flash-lite",
+            "openai/gpt-oss-120b",
             "deepseek/deepseek-chat-v3.1",
             "gemini-2.0-flash",
-            "openai/gpt-oss-120b",
             "gemini-2.5-flash",
             "sarvamai/sarvam-m",
             "z-ai/glm-4.5-air", 
@@ -19,7 +19,7 @@ class LLM_analyzer:
             "deepseek/deepseek-r1-0528-qwen3-8b",  
             "tngtech/deepseek-r1t-chimera", 
             "microsoft/mai-ds-r1",
-            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash-lite",
             "gemini-2.5-pro",
             "venice/uncensored"
         ]

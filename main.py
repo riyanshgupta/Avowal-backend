@@ -1,45 +1,43 @@
-import logging
-import traceback
-from fastapi import FastAPI, Request, Depends, UploadFile, BackgroundTasks, status
+
+
+from collections import defaultdict
+import logging, asyncio, traceback
+
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Dict, Optional, Set, Union
+from os import getenv, path
+from re import findall, fullmatch
+
+from fastapi import FastAPI, Depends, UploadFile, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import select, func, update, delete
-import os
-from database import get_session, init_db
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from passlib.context import CryptContext
-from datetime import datetime, timedelta, timezone
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
+from fastapi_mail import ConnectionConfig
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
+from sqlmodel import select, func, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+import cloudinary.uploader
+import cloudinary
+
+from database import get_session, init_db
 from models import Confession, User, Comment
 from schema import (
     ConfessionCreate,
     ConfessionResponse,
     GoogleIDToken,
     UserCreate,
-    UserResponse,
     CommentCreate,
     CommentResponse,
     ForgotPasswordRequest,
     ResetPasswordRequest,
     MarkAsReadRequest,
 )
-from sqlalchemy.exc import IntegrityError
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
-import re
-from dotenv import load_dotenv
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
-import asyncio
-import json
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
-from bisect import bisect_left
-import cloudinary
-import cloudinary.uploader
-from data import emails_list, name_list
+from data import emails_list
 from service import create_jwt_for_google_user, verify_google_token
 from utils import LLM_analyzer
 from config import (
@@ -56,22 +54,17 @@ from config import (
     ACCESS_TOKEN_EXPIRE_MINUTE,
 )
 from helpers import (
+    authenticate_user,
+    create_access_token,
     delete_confession_and_related,
     get_user_by_username,
     get_user_by_email,
-    create_user,
-    authenticate_user,
-    create_access_token,
     verify_token,
     get_current_user,
-    pwd_context
 )
-from sqlalchemy.orm import selectinload, load_only
-
 # -----------------------------------------Do Not Change here----------------------------------------------------------------------
 
 app = FastAPI()
-
 
 # @app.on_event("startup")
 async def on_startup():
@@ -107,7 +100,7 @@ serializer = URLSafeTimedSerializer(SECRET_KEY)
 images_path = Path("images")
 app.mount("/images", StaticFiles(directory=images_path), name="images")
 
-
+analyzer = LLM_analyzer(SYSTEM_PROMPT_FOR_APPROVAL, API_KEY_GEMINI, API_KEY_OPEN_ROUTER)
 comment_event_queue = asyncio.Queue()
 
 
@@ -118,9 +111,8 @@ async def root():
     return JSONResponse(
         status_code=200,
         content={
-            "message": "Welcome to Avowal Backend - API is live, go to the documentation for more information",
+            "message": "API is live",
             "documentation": "https://avowal-backend.vercel.app/docs",
-            "Developer": "Pranjali Rathi",
         })
 
 # ----------------------------------------------Oauth2.0 and JWT based authentication system---------------------------------
@@ -135,30 +127,30 @@ async def auth_google(google_id_token: GoogleIDToken, session: AsyncSession = De
     return response
 
 # ----------------------------------------------Auth Routes---------------------------------
-@app.post("/signup")
-async def register_user(
-    user: UserCreate, session: AsyncSession = Depends(get_session)
-):
+# @app.post("/signup")
+# async def register_user(
+#     user: UserCreate, session: AsyncSession = Depends(get_session)
+# ):
 
-    user_model = await get_user_by_username(user.username, session)
-    if user_model is not None:
-        return JSONResponse(
-            status_code=400, content={"message": "Username already taken"}
-        )
-    user_model = await get_user_by_email(user.email, session)
-    if user_model:
-        return JSONResponse(status_code=400, content={"message": f"Email already exists"})
-    if user.email not in emails_list:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "message": f"This email doesn't exists in our database please enter your college mail"
-            },
-        )
-    return await create_user(user, session)
+#     user_model = await get_user_by_username(user.username, session)
+#     if user_model is not None:
+#         return JSONResponse(
+#             status_code=400, content={"message": "Username already taken"}
+#         )
+#     user_model = await get_user_by_email(user.email, session)
+#     if user_model:
+#         return JSONResponse(status_code=400, content={"message": f"Email already exists"})
+#     if user.email not in emails_list:
+#         return JSONResponse(
+#             status_code=400,
+#             content={
+#                 "message": f"This email doesn't exists in our database please enter your college mail"
+#             },
+#         )
+#     return await create_user(user, session)
     
 # ------------------Login Route-----------------------
-# email has to be there
+
 @app.post("/login")
 async def login_for_accesstoken(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -191,70 +183,70 @@ async def verify_user_token(
 # ------------------------Forgot Password Routes-------------------------
 
 
-@app.post("/forgot-password")
-async def forgot_password(
-    request: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session),
-):
-    user = await get_user_by_email(request.email, session)
+# @app.post("/forgot-password")
+# async def forgot_password(
+#     request: ForgotPasswordRequest,
+#     background_tasks: BackgroundTasks,
+#     session: AsyncSession = Depends(get_session),
+# ):
+#     user = await get_user_by_email(request.email, session)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User with this email does not exist.",
-        )
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="User with this email does not exist.",
+#         )
 
-    # Generate a token that expires in 10 minutes
-    token = serializer.dumps(user.email, salt=SALT)
-    reset_link = f"https://avowal-backend.vercel.app/reset-password?token={token}"
+#     # Generate a token that expires in 10 minutes
+#     token = serializer.dumps(user.email, salt=SALT)
+#     reset_link = f"https://avowal-backend.vercel.app/reset-password?token={token}"
 
-    # Prepare the email
-    message = MessageSchema(
-        subject="Password Reset Request",
-        recipients=[request.email],
-        body=f"Click on the link to reset your password: {reset_link}",
-        subtype="html",
-    )
+#     # Prepare the email
+#     message = MessageSchema(
+#         subject="Password Reset Request",
+#         recipients=[request.email],
+#         body=f"Click on the link to reset your password: {reset_link}",
+#         subtype="html",
+#     )
 
-    # Send email
-    fm = FastMail(conf)
-    background_tasks.add_task(fm.send_message, message)
+#     # Send email
+#     fm = FastMail(conf)
+#     background_tasks.add_task(fm.send_message, message)
 
-    return {"message": "Password reset email has been sent."}
+#     return {"message": "Password reset email has been sent."}
 
 
-@app.post("/reset-password")
-async def reset_password(
-    request: ResetPasswordRequest, session: AsyncSession = Depends(get_session)
-):
-    try:
-        # Decode the token (expires in 10 minutes)
-        email = serializer.loads(request.token, salt=SALT, max_age=600)
-    except SignatureExpired:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="The token has expired."
-        )
-    except BadTimeSignature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token."
-        )
+# @app.post("/reset-password")
+# async def reset_password(
+#     request: ResetPasswordRequest, session: AsyncSession = Depends(get_session)
+# ):
+#     try:
+#         # Decode the token (expires in 10 minutes)
+#         email = serializer.loads(request.token, salt=SALT, max_age=600)
+#     except SignatureExpired:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST, detail="The token has expired."
+#         )
+#     except BadTimeSignature:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token."
+#         )
 
-    # Fetch user and update the password
-    user = await get_user_by_email(email, session)
+#     # Fetch user and update the password
+#     user = await get_user_by_email(email, session)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
-        )
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+#         )
 
-    # Update the password (hash the password as per your application logic)
-    user.hashedpassword = pwd_context.hash(
-        request.new_password
-    )  # Make sure to hash this password before storing
-    session.add(user)
-    await session.commit()
-    return {"message": "Password has been reset successfully."}
+#     # Update the password (hash the password as per your application logic)
+#     user.hashedpassword = pwd_context.hash(
+#         request.new_password
+#     )  # Make sure to hash this password before storing
+#     session.add(user)
+#     await session.commit()
+#     return {"message": "Password has been reset successfully."}
 
 
 # -------------------------Routes for user profile--------------------------------------
@@ -280,10 +272,18 @@ async def update_user(
             )
         current_user.relationship_status = relationship_status
     if username:
+        validate = lambda s: bool(fullmatch(r"[A-Za-z_.]+", s))
+        if not validate(username):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid username. Only alphanumerics, _s and .s are allowed.",
+            )
+        
         # Check if username is already taken (heavy db call, use redis)
         user = await get_user_by_username(username, session)
         if user and user.id != current_user.id:
             raise HTTPException(status_code=403, detail=f"Username already taken")
+        
         current_user.username = username
 
     if username or relationship_status:
@@ -424,15 +424,19 @@ async def extract_mentions(
     content: str, 
     session: AsyncSession
 ) -> Dict[str, Union[int, None]]:
+    """
+    Extract mentions from the content and map them to user IDs.
+    Returns: A dictionary mapping usernames to their user IDs (or None if not found).
+    """
     # Extract mentions using regex
-    pattern = r"@(\w+)"  # Matches @username
-    mentions = re.findall(pattern, content)
+    pattern = r"@([A-Za-z0-9_.]+)"  # Matches @username
+    mentions = set(findall(pattern, content))
 
     res = {}
     if not mentions:
         return res
 
-    stmt = select(User.username, User.id).where(User.username.in_(mentions))
+    stmt = select(User.username, User.id).where(User.username.in_(list(mentions)))
     result = await session.execute(stmt)
     existing_users = result.all()
 
@@ -468,8 +472,7 @@ async def add_confession(
     
     try:
         # Check with LLM analyzer
-        analyzer = LLM_analyzer(SYSTEM_PROMPT_FOR_APPROVAL, API_KEY_GEMINI, API_KEY_OPEN_ROUTER)
-        print(analyzer.gemini_api_key, analyzer.open_router_api_key)
+
         llm_decision = await analyzer.analyze_confession(confession.content)
     except Exception as e:
         logging.error(f"Error occurred in add_confession: {traceback.format_exc()}")
@@ -511,106 +514,6 @@ async def add_confession(
     return ConfessionResponse.from_orm(db_confession)
 
 
-# @app.post("/confessions/sse")  # Changed route slightly to indicate SSE
-# async def add_confession_sse(
-#     confession_data: ConfessionCreate,
-#     request: Request,  # Request object is needed for client disconnect check
-#     session: AsyncSession = Depends(get_session),
-#     current_user: Dict[str, Any] = Depends(get_current_user),
-# ):
-#     """
-#     Receives a confession, analyzes it using an LLM via streaming,
-#     and saves it only if approved. Streams the process via SSE.
-#     """
-
-#     async def event_generator() -> AsyncGenerator[str, None]:
-#         """Generates SSE messages for the analysis and saving process."""
-#         llm_decision = None
-#         analysis_stream = None
-#         valid_users = []
-
-#         try:
-#             # 1. Initial Validation (Mentions)
-#             yield f"event: status\ndata: {json.dumps({'message': 'Validating mentions...'})}\n\n"
-#             mentioned_usernames = await extract_mentions(
-#                 confession_data.content, session
-#             )
-#             for username, user_id in mentioned_usernames.items():
-#                 if user_id is None:
-#                     yield f"event: result\ndata: {json.dumps({'status': 'rejected', 'reason': f'User @{username} not found.'})}\n\n"
-#                     return
-#                 result = await session.execute(select(User).where(User.id == user_id))
-#                 valid_users.append(result.scalar_one())
-
-#             yield f"event: status\ndata: {json.dumps({'message': 'Mentions validated. Starting content analysis...'})}\n\n"
-
-#             # 2. Stream LLM Analysis
-#             analysis_stream = analyze_confession_with_llm(confession_data.content)
-#             async for chunk in analysis_stream:
-#                 if await request.is_disconnected():
-#                     break
-#                 yield f"event: {chunk.get('type', 'message')}\ndata: {json.dumps(chunk)}\n\n"
-#                 if chunk.get("type") == "decision":
-#                     llm_decision = chunk.get("message")
-
-#             # 3. Process Based on LLM Decision
-#             if llm_decision == "APPROVE":
-#                 yield f"event: status\ndata: {json.dumps({'message': 'Content approved. Saving confession...'})}\n\n"
-#                 try:
-#                     db_confession = Confession(
-#                         content=confession_data.content, mentions=valid_users
-#                     )
-#                     session.add(db_confession)
-#                     await session.commit()
-#                     await session.refresh(db_confession)
-
-#                     # Load mentions to avoid serialization issues and limit fields
-#                     stmt = (
-#                         select(Confession)
-#                         .where(Confession.id == db_confession.id)
-#                         .options(
-#                             selectinload(Confession.mentions).load_only(User.id, User.username, User.name, User.profile_pic, User.relationship_status)
-#                         )
-#                     )
-#                     result = await session.execute(stmt)
-#                     db_confession = result.scalar_one()
-
-#                     update_stmt = update(User).values(
-#                         unread_confessions=func.array_prepend(
-#                             db_confession.id, User.unread_confessions
-#                         )
-#                     )
-#                     await session.execute(update_stmt)
-#                     await session.commit()
-
-#                     yield f"event: status\ndata: {json.dumps({'message': 'Confession saved and notifications updated.'})}\n\n"
-#                     response_data = ConfessionResponse.from_orm(db_confession)
-#                     yield f"event: result\ndata: {json.dumps({'status': 'approved', 'confession': jsonable_encoder(response_data)})}\n\n"
-
-#                 except Exception as e:
-#                     await session.rollback()
-#                     print(f"Unexpected error during save: {e}")
-#                     yield f"event: error\ndata: {json.dumps({'message': 'An unexpected error occurred during saving.'})}\n\n"
-#                     yield f"event: result\ndata: {json.dumps({'status': 'failed', 'reason': 'Internal server error.'})}\n\n"
-
-#             elif llm_decision == "REJECT":
-#                 yield f"event: status\ndata: {json.dumps({'message': 'Content rejected by analysis.'})}\n\n"
-#                 yield f"event: result\ndata: {json.dumps({'status': 'rejected', 'reason': 'Content did not meet guidelines.'})}\n\n"
-#             else:
-#                 yield f"event: error\ndata: {json.dumps({'message': 'Invalid decision from analysis module.'})}\n\n"
-#                 yield f"event: result\ndata: {json.dumps({'status': 'failed', 'reason': 'Internal analysis error.'})}\n\n"
-
-#         except Exception as e:
-#             print(f"Unexpected error in event generator: {e}")
-#             yield f"event: error\ndata: {json.dumps({'message': 'An unexpected server error occurred.'})}\n\n"
-#             yield f"event: result\ndata: {json.dumps({'status': 'failed', 'reason': 'Internal server error.'})}\n\n"
-#         finally:
-#             if analysis_stream:
-#                 await analysis_stream.aclose()
-
-#     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
 @app.get("/confessions")
 async def get_confessions(
     q: Optional[str] = None,
@@ -624,11 +527,11 @@ async def get_confessions(
         raise HTTPException(status_code=404, detail="User not found")
     # Optimized query - select only needed columns
     if q:
-        stmt = select(Confession.id, Confession.content, Confession.created_at).where(
+        stmt = select(Confession.id, Confession.content, Confession.created_at, func.count(Comment.id)).outerjoin(Comment).group_by(Confession.id).where(
             Confession.content.ilike(f"%{q}%")
         ).order_by(Confession.created_at.desc()).offset(skip).limit(limit)
     else:
-        stmt = select(Confession.id, Confession.content, Confession.created_at).order_by(
+        stmt = select(Confession.id, Confession.content, Confession.created_at, func.count(Comment.id)).outerjoin(Comment).group_by(Confession.id).order_by(
             Confession.created_at.desc()
         ).offset(skip).limit(limit)
     
@@ -636,16 +539,29 @@ async def get_confessions(
     confessions = result.mappings().all()
 
     unread_confessions_set = set(current_user.unread_confessions)
-
-    data = [
-        {
+    mp: Dict[int, Set[str]] = defaultdict(set)
+    data = []
+    mentions_str, pattern = "", r"@([A-Za-z0-9_.]+)"
+    for confession in confessions:
+        data.append({
             "id": confession.id,
             "content": confession.content,
             "created_at": confession.created_at.isoformat(),
             "read": confession.id not in unread_confessions_set,
-        }
-        for confession in confessions
-    ]
+            "comments_count": confession.count,
+            "mentions": []
+        })
+        
+        temp_mentions = findall(pattern, confession.content)
+        if temp_mentions:
+            mp[confession.id].update(temp_mentions)
+            mentions_str += '@' + ' @'.join(username for username in temp_mentions) + ' '
+
+    map_username_to_user_id = await extract_mentions(mentions_str, session)
+
+    for confession in data:
+        if confession["id"] in mp:
+            confession["mentions"] = [username for username in mp[confession["id"]] if username in map_username_to_user_id]
 
     return {
         "message": "Confessions fetched successfully", 
@@ -662,7 +578,7 @@ async def delete_confession(
     """
     Only for admin to delete any confession
     """
-    if password == os.getenv("PASSWORD"):
+    if password == getenv("PASSWORD"):
         result = await delete_confession_and_related(
             confession_id=confession_id,session=session) # Error handeling is not proper
         if result:
@@ -791,7 +707,7 @@ async def delete_comment(
 
 @app.post("set/email/")
 async def set_email(password: str):
-    if password != os.getenv("PASSWORD"):
+    if password != getenv("PASSWORD"):
         return JSONResponse(
             status_code=400,
             content={
@@ -802,7 +718,7 @@ async def set_email(password: str):
     import json
 
     emails, names = [], []
-    if not os.path.exists("data.json"):
+    if not path.exists("data.json"):
         raise HTTPException(status_code=500, detail="data.json doesn't exists")
     with open(file="data.json", encoding="utf-8", mode="r") as f:
         data = json.loads(f.read())
@@ -823,4 +739,4 @@ async def set_email(password: str):
 if __name__ == "__main__":
     import uvicorn
     asyncio.run(on_startup())
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=2)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=1)
