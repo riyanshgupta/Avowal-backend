@@ -36,11 +36,11 @@ class Comment(SQLModel, table=True):
 class Confession(SQLModel, table=True):
     __table_args__ = (
         Index('idx_confession_created_at', 'created_at'),
-        Index('idx_confession_content_gin', 'content', postgresql_using='gin', postgresql_ops={'content': 'gin_trgm_ops'}),
+        # Removed GIN index from model - will create manually
     )
     
     id: Optional[int] = Field(primary_key=True)
-    content: str = Field(sa_column=Column(Text, nullable=False))  # Fixed: moved nullable to Column
+    content: str = Field(sa_column=Column(Text, nullable=False))
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False, index=True)
 
     mentions: List["User"] = Relationship(

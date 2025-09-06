@@ -39,9 +39,9 @@ async def init_db():
         logger.info(f"Creating database tables...")
         # Will create all tables, if not present.
         await conn.run_sync(SQLModel.metadata.create_all)
+        # await conn.run_sync(SQLModel.metadata.drop_all)
 
-
-# await conn.run_sync(SQLModel.metadata.drop_all)
+# 
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

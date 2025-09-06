@@ -294,6 +294,8 @@ async def upload_profile_pic(
 ):
 
     current_user = await get_user_by_email(current_user.get("email"), session)
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     if "image" not in file.content_type:
         return JSONResponse(
@@ -341,6 +343,8 @@ async def upload_profile_pic(
 @app.get("/profile_data")
 async def get_profile(current_user: Dict[str, Any] = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     current_user = await get_user_by_email(current_user.get("email"), session)
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
     data = jsonable_encoder(
         current_user, exclude=["hashedpassword", "id", "unread_confessions"]
     )
@@ -600,7 +604,8 @@ async def get_confessions(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     current_user:User = await get_user_by_email(current_user.get("email"), session)
-    
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
     # Optimized query - select only needed columns
     if q:
         stmt = select(Confession.id, Confession.content, Confession.created_at).where(
