@@ -1,8 +1,8 @@
 
 
 from collections import defaultdict
-import logging, asyncio, traceback
-
+import logging, traceback
+from asyncio import gather, run, get_running_loop, set_event_loop_policy
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
@@ -30,11 +30,8 @@ from schema import (
     ConfessionCreate,
     ConfessionResponse,
     GoogleIDToken,
-    UserCreate,
     CommentCreate,
     CommentResponse,
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
     MarkAsReadRequest,
 )
 from data import emails_list
@@ -68,7 +65,7 @@ app = FastAPI()
 
 # @app.on_event("startup")
 async def on_startup():
-    await asyncio.gather(init_db())
+    await gather(init_db())
 
 
 app.add_middleware(
@@ -101,9 +98,6 @@ images_path = Path("images")
 app.mount("/images", StaticFiles(directory=images_path), name="images")
 
 analyzer = LLM_analyzer(SYSTEM_PROMPT_FOR_APPROVAL, API_KEY_GEMINI, API_KEY_OPEN_ROUTER)
-comment_event_queue = asyncio.Queue()
-
-
 
 # ------------------------------------------------------------------------------------------------------------------------
 @app.get("/")
@@ -416,7 +410,7 @@ async def delete_user(
 ):
     current_user: User = await get_user_by_email(current_user.get("email"), session)
     if current_user.profile_pic != "images/profile/def.jpg":
-        loop = asyncio.get_running_loop()
+        loop = get_running_loop()
         response = await loop.run_in_executor(
             None, lambda: cloudinary.uploader.destroy(current_user.username)
         )
@@ -766,5 +760,14 @@ async def get_top_usernames(
 
 if __name__ == "__main__":
     import uvicorn
-    asyncio.run(on_startup())
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=1)
+    run(on_startup())
+    kwargs = dict(host="0.0.0.0", port=8000, workers=1)
+    try:
+        import uvloop  # type: ignore
+        import httptools  # type: ignore
+        uvloop.install()
+        set_event_loop_policy(uvloop.EventLoopPolicy())
+        kwargs.update(loop="uvloop", http="httptools")
+    except Exception:
+        pass
+    uvicorn.run("main:app", **kwargs)
