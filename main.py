@@ -33,6 +33,7 @@ from schema import (
     CommentCreate,
     CommentResponse,
     MarkAsReadRequest,
+    UserCreate,
 )
 from data import emails_list
 from service import create_jwt_for_google_user, verify_google_token
@@ -52,7 +53,9 @@ from config import (
 )
 from helpers import (
     authenticate_user,
+    change_username_in_confessions,
     create_access_token,
+    create_user,
     delete_confession_and_related,
     get_user_by_username,
     get_user_by_email,
@@ -121,27 +124,27 @@ async def auth_google(google_id_token: GoogleIDToken, session: AsyncSession = De
     return response
 
 # ----------------------------------------------Auth Routes---------------------------------
-# @app.post("/signup")
-# async def register_user(
-#     user: UserCreate, session: AsyncSession = Depends(get_session)
-# ):
+@app.post("/signup")
+async def register_user(
+    user: UserCreate, session: AsyncSession = Depends(get_session)
+):
 
-#     user_model = await get_user_by_username(user.username, session)
-#     if user_model is not None:
-#         return JSONResponse(
-#             status_code=400, content={"message": "Username already taken"}
-#         )
-#     user_model = await get_user_by_email(user.email, session)
-#     if user_model:
-#         return JSONResponse(status_code=400, content={"message": f"Email already exists"})
-#     if user.email not in emails_list:
-#         return JSONResponse(
-#             status_code=400,
-#             content={
-#                 "message": f"This email doesn't exists in our database please enter your college mail"
-#             },
-#         )
-#     return await create_user(user, session)
+    user_model = await get_user_by_username(user.username, session)
+    if user_model is not None:
+        return JSONResponse(
+            status_code=400, content={"message": "Username already taken"}
+        )
+    user_model = await get_user_by_email(user.email, session)
+    if user_model:
+        return JSONResponse(status_code=400, content={"message": f"Email already exists"})
+    if user.email not in emails_list:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": f"This email doesn't exists in our database please enter your college mail"
+            },
+        )
+    return await create_user(user, session)
     
 # ------------------Login Route-----------------------
 
@@ -254,10 +257,12 @@ async def update_user(
     session: AsyncSession = Depends(get_session),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    current_user = await get_user_by_email(current_user.get("email"), session)
-
+    current_user = await get_user_by_email("pranjali.2201119ec@iiitbh.ac.in", session)
+    old_username = None
     if not current_user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    flag = False
     if relationship_status:
         if relationship_status not in ["Single", "Committed"]:
             raise HTTPException(
@@ -265,8 +270,9 @@ async def update_user(
                 detail=f"Relationship status can be either Single or Committed",
             )
         current_user.relationship_status = relationship_status
+        flag = True
     if username:
-        validate = lambda s: bool(fullmatch(r"[A-Za-z_.]+", s))
+        validate = lambda s: bool(fullmatch(r"[A-Za-z0-9._]+", s))
         if not validate(username):
             raise HTTPException(
                 status_code=400,
@@ -277,13 +283,16 @@ async def update_user(
         user = await get_user_by_username(username, session)
         if user and user.id != current_user.id:
             raise HTTPException(status_code=403, detail=f"Username already taken")
-        
+        old_username = current_user.username
         current_user.username = username
+        flag = True
 
-    if username or relationship_status:
+    if flag:
         session.add(current_user)
         await session.commit()
         await session.refresh(current_user)
+        if old_username:
+            await change_username_in_confessions(old_username=old_username, user=current_user, session=session)
 
     data = jsonable_encoder(
         current_user, include=["id", "username", "relationship_status", "name"]
@@ -310,8 +319,10 @@ async def upload_profile_pic(
 
     # delete previous file from cloud
     if current_user.profile_pic != "images/profile/def.jpg":
-        cloudinary.uploader.destroy(current_user.username)
-
+        try:
+            cloudinary.uploader.destroy(current_user.username)
+        except Exception as e:
+            logging.warning(f"User's profile is taken from google so doesn't exists in cloudinary: {e}")
     filecontent = await file.read()
 
     ext = file.filename.split(".")[-1]
@@ -459,7 +470,7 @@ async def add_confession(
     session: AsyncSession = Depends(get_session),
 ):
     
-    mentioned_usernames = await extract_mentions(confession.content, session)
+    mentioned_usernames: Dict[str, int] = await extract_mentions(confession.content, session)
     # return JSONResponse(mentioned_usernames, status_code=200)
     
     valid_user_ids = []

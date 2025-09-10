@@ -1,18 +1,21 @@
+import asyncio
 import traceback
 from typing import Any, Dict
 import logging
 import aiohttp
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 class LLM_analyzer:
     def __init__(self, system_prompt: str, gemini_api_key: str, open_router_api_key: str):
         self.system_prompt = system_prompt
         self.allowed_models = [
-            "gemini-2.5-flash-lite",
-            "openai/gpt-oss-120b",
-            "deepseek/deepseek-chat-v3.1",
-            "gemini-2.0-flash",
             "gemini-2.5-flash",
+            "openai/gpt-oss-120b",
             "sarvamai/sarvam-m",
+            "gemini-2.0-flash",
+            "deepseek/deepseek-chat-v3.1",
+            "gemini-2.5-flash-lite",
             "z-ai/glm-4.5-air", 
             "moonshotai/kimi-k2",
             "tngtech/deepseek-r1t2-chimera", 
@@ -156,16 +159,40 @@ class LLM_analyzer:
         if not available_models:
             raise ValueError("No models available due to missing API keys")
         
-        while max_retries != i:
+        tasks = []
+        for i in range(4):
             try:
                 model = available_models[i % len(available_models)]
-                res = await self._llm_call(
-                    user_prompt=user_prompt,
-                    model=model,
-                )
-                return self._extract_text(res)
+                tasks.append(asyncio.create_task(self._llm_call(user_prompt=user_prompt, model=model)))
             except Exception as e:
-                logging.error(f"Error occurred at analyze_confession: {e}")
-                i += 1
-                if max_retries == i:
-                    raise e
+                logger.error(f"Error occurred at analyze_confession: {e}")
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        flag, all_failed = False, True
+        for res in results:
+            if isinstance(res, dict):
+                all_failed = False
+                flag |= self._extract_text(res)=="APPROVE"      # If any model approves, we approve
+                logger.info(f"Model {model} response: {res}")
+
+        if flag==False and not all_failed:
+            return "REJECT"
+        elif all_failed:
+            logger.error(f"All model calls failed {results}")
+            return "APPROVE"
+        
+        return "APPROVE"
+    
+        # while max_retries != i:
+        #     try:
+        #         model = available_models[i % len(available_models)]
+        #         res = await self._llm_call(
+        #             user_prompt=user_prompt,
+        #             model=model,
+        #         )
+        #         return self._extract_text(res)
+        #     except Exception as e:
+        #         logging.error(f"Error occurred at analyze_confession: {e}")
+        #         i += 1
+        #         if max_retries == i:
+        #             raise e

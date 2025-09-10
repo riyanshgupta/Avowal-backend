@@ -133,7 +133,29 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# ...existing code...
+async def change_username_in_confessions(old_username: str, user: User, session: AsyncSession):
+    try:
+        stmt = (
+            select(Confession)
+            .join(ConfessionMentionLink, ConfessionMentionLink.confession_id == Confession.id)
+            .where(ConfessionMentionLink.user_id == user.id)
+            .order_by(Confession.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        confessions: list[Confession] = result.scalars().all()
+        update_required = False
+        for confession in confessions:
+            if '@'+old_username in confession.content:
+                confession.content = confession.content.replace('@' + old_username, '@' + user.username)
+                update_required = True
+        # # Lets do the bulk update now
+        if update_required:
+            await session.commit()
+        
+    except Exception as e:
+        await session.rollback()
+        logging.error(f"Error occurred while changing username in confessions: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to update username in confessions")
 
 async def delete_confession_and_related(
     confession_id: int,
@@ -171,8 +193,7 @@ async def delete_confession_and_related(
                 await session1.execute(delete_links_stmt)
                 await session1.commit()
 
-        # Concurrent deletions
-        import asyncio        
+        # Concurrent deletions       
         tasks = [
             asyncio.create_task(delete_comments()),
             asyncio.create_task(delete_links())
@@ -191,4 +212,3 @@ async def delete_confession_and_related(
         await session.rollback()
         logging.error(f"Error deleting confession {confession_id}: {e} {traceback.format_exc()}")
         return False
-
