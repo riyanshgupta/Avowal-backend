@@ -257,7 +257,7 @@ async def update_user(
     session: AsyncSession = Depends(get_session),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    current_user = await get_user_by_email("pranjali.2201119ec@iiitbh.ac.in", session)
+    current_user = await get_user_by_email(current_user.get("email"), session)
     old_username = None
     if not current_user:
         raise HTTPException(status_code=404, detail="User not found")
