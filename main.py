@@ -124,27 +124,27 @@ async def auth_google(google_id_token: GoogleIDToken, session: AsyncSession = De
     return response
 
 # ----------------------------------------------Auth Routes---------------------------------
-@app.post("/signup")
-async def register_user(
-    user: UserCreate, session: AsyncSession = Depends(get_session)
-):
+# @app.post("/signup")
+# async def register_user(
+#     user: UserCreate, session: AsyncSession = Depends(get_session)
+# ):
 
-    user_model = await get_user_by_username(user.username, session)
-    if user_model is not None:
-        return JSONResponse(
-            status_code=400, content={"message": "Username already taken"}
-        )
-    user_model = await get_user_by_email(user.email, session)
-    if user_model:
-        return JSONResponse(status_code=400, content={"message": f"Email already exists"})
-    if user.email not in emails_list:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "message": f"This email doesn't exists in our database please enter your college mail"
-            },
-        )
-    return await create_user(user, session)
+#     user_model = await get_user_by_username(user.username, session)
+#     if user_model is not None:
+#         return JSONResponse(
+#             status_code=400, content={"message": "Username already taken"}
+#         )
+#     user_model = await get_user_by_email(user.email, session)
+#     if user_model:
+#         return JSONResponse(status_code=400, content={"message": f"Email already exists"})
+#     if user.email not in emails_list:
+#         return JSONResponse(
+#             status_code=400,
+#             content={
+#                 "message": f"This email doesn't exists in our database please enter your college mail"
+#             },
+#         )
+#     return await create_user(user, session)
     
 # ------------------Login Route-----------------------
 
