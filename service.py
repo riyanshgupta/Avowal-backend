@@ -33,9 +33,9 @@ async def create_jwt_for_google_user(google_payload: dict, session: AsyncSession
         user = await get_user_by_email(user_data["email"], session=session)
         
         if not user:
-            # Create user in DB
-            if not str(user_data["email"]).endswith(iiitbh_email_domain):
-                raise HTTPException(status_code=403, detail=f"Email domain must be {iiitbh_email_domain}")
+            # # Create user in DB
+            # if not str(user_data["email"]).endswith(iiitbh_email_domain):
+            #     raise HTTPException(status_code=403, detail=f"Email domain must be {iiitbh_email_domain}")
 
             hashed_password = pwd_context.hash(secrets.token_urlsafe(16))  # Generate a secure random password
             json_response: JSONResponse = await create_user(
